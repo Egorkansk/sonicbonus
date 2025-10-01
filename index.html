@@ -1,0 +1,1746 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>3D Maze Game</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * { margin: 0; padding: 0; }
+        body { overflow: hidden; }
+        canvas { width: 100vw; height: 100vh; display: block; }
+        #ui {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-family: Arial;
+            font-size: 24px;
+            z-index: 100;
+        }
+        #gameOver {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: red;
+            font-size: 48px;
+            display: none;
+            z-index: 200;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        Score: <span id="score">0</span><br>
+        Time: <span id="timer">0</span>
+    </div>
+    <div id="fps" style="position: fixed; top: 10px; right: 10px; color: white; font-family: Arial; font-size: 20px; z-index: 100;">
+    FPS: <span id="fpsCounter">0</span>
+</div>
+    <div id="gameOver">GAME OVER<br>Tap to restart</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r132/three.min.js"></script>
+    <script src="https://cdn.rawgit.com/mrdoob/three.js/r132/examples/js/loaders/GLTFLoader.js" ></script>
+   
+   <script>
+  
+    // Функция для проверки и запуска сервера
+    
+   
+   
+   
+const  explodeShaderMaterial = new THREE.ShaderMaterial({
+    vertexShader: `
+        uniform float time;         // Время для анимации
+        uniform float speed;        // Скорость разлета
+        attribute vec3 direction;   // Направление разлета
+        varying float vOpacity;     // Прозрачность вершин
+
+        void main() {
+            // Смещение вершин в направлении разлета
+            vec3 animatedPosition = position + direction * time * speed;
+
+            // Затухание прозрачности с увеличением расстояния
+             vOpacity = 1.0;// - time * 0.5;
+
+            // Итоговая позиция вершины
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(animatedPosition, 1.0);
+        }
+    `,
+    fragmentShader: `
+        varying float vOpacity;
+
+        void main() {
+            gl_FragColor = vec4(0, 0, 0.8, 1.0); // Оранжевый цвет с затуханием
+        }
+    `,
+    uniforms: {
+        time: { value: 0.0 },
+        speed: { value: 2.0 }
+    },
+    transparent: true,
+    side: THREE.DoubleSide
+});
+explodeShaderMaterial1 = new THREE.ShaderMaterial({
+    vertexShader: `
+        uniform float time;       // Время анимации
+        uniform float explosionStrength; // Сила взрыва
+        varying float vOpacity;   // Прозрачность вершин
+
+        void main() {
+            // Смещение вершин вдоль их нормалей
+            vec3 animatedPosition = position + normal * explosionStrength * time;
+
+            // Затухание прозрачности с расстоянием
+            vOpacity = 1.0 - time * 0.5;
+
+            // Вычисляем финальную позицию вершин
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(animatedPosition, 1.0);
+        }
+    `,
+    fragmentShader: `
+        varying float vOpacity; // Получаем прозрачность из вершинного шейдера
+
+        void main() {
+            gl_FragColor = vec4(1.0, 0.5, 0.0, vOpacity); // Оранжевый цвет с затуханием прозрачности
+        }
+    `,
+    uniforms: {
+        time: { value: 0.0 },                 // Время анимации
+        explosionStrength: { value: 2.0 }     // Сила разлета полигонов
+    },
+    transparent: true, // Включаем прозрачность
+    side: THREE.DoubleSide // Рендерим обе стороны полигонов
+});
+
+const playerShader = {
+    vertexShader: `
+        uniform float bendStrength;
+
+        varying vec3 vNormal;        // Передаем нормаль
+        varying vec3 vViewPosition;  // Позиция камеры относительно объекта
+
+        void main() {
+            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+            float dist = length(mvPosition.xyz);
+
+            // Применение эффекта изгиба
+            mvPosition.y -= bendStrength * pow(dist, 2.0);
+
+            vNormal = normalize(normalMatrix * normal); // Трансформируем нормаль
+            vViewPosition = -mvPosition.xyz;           // Позиция камеры относительно объекта
+
+            gl_Position = projectionMatrix * mvPosition;
+        }
+    `,
+    fragmentShader: `
+        varying vec3 vNormal;        // Нормаль из вершинного шейдера
+        varying vec3 vViewPosition;  // Позиция камеры относительно объекта
+
+        void main() {
+            vec3 finalColor = vec3(1.0); // Оставляем цвет материала (подставится из базового материала)
+            gl_FragColor = vec4(finalColor, 1.0);
+        }
+    `,
+    uniforms: {
+        bendStrength: { value: 0.02 } // Сила изгиба
+    }
+};
+
+
+
+
+const bendingShader = {
+    vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vColor;
+        uniform float bendStrength;
+
+        void main() {
+            vUv = uv;
+            vColor = color; // Передаем цвет из атрибута
+
+            // Применение искривления
+            
+            
+            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+            float dist = length(mvPosition.xyz);
+            mvPosition.y -= bendStrength * pow(dist, 2.0);
+
+            gl_Position = projectionMatrix * mvPosition;
+        }
+    `,
+    fragmentShader: `
+        varying vec2 vUv;
+        varying vec3 vColor;
+        uniform sampler2D textureMap;
+
+        void main() {
+            // Комбинируем цвет объекта и текстуру
+            vec4 texColor = texture2D(textureMap, vUv);
+            vec4 finalColor = texColor * vec4(vColor, 0.6); // Умножаем текстуру на цвет объекта
+            gl_FragColor = finalColor;
+        }
+    `,
+    uniforms: {
+        bendStrength: { value: 0.02 }, // Сила изгиба
+        textureMap: { value: null }   // Текстура объекта
+    }
+};
+const bendingShader1 = {
+    vertexShader: `
+        varying vec2 vUv; // Передаем UV-координаты
+        varying vec3 vNormal; // Нормали для освещения
+        varying vec3 vLightDir; // Направление света
+
+        uniform float bendStrength;
+
+        void main() {
+            vUv = uv; // Сохраняем UV-координаты
+
+            // Применение искривления
+            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+            float dist = length(mvPosition.xyz);
+            mvPosition.y -= bendStrength * pow(dist, 2.0);
+
+            // Передаем нормали
+            vNormal = normalize(normalMatrix * normal);
+            vec3 lightPos = vec3(10.0, 10.0, 10.0); // Позиция источника света
+            vLightDir = normalize(lightPos - mvPosition.xyz); // Направление света
+
+            gl_Position = projectionMatrix * mvPosition;
+        }`
+    ,
+    fragmentShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        varying vec3 vLightDir;
+
+        uniform sampler2D textureMap;
+        uniform vec2 uvScale; // Масштаб UV-координат
+
+        void main() {
+            // Масштабируем текстурные координаты
+            vec2 scaledUv = vUv * uvScale;
+
+            // Применяем текстуру
+            vec4 texColor = texture2D(textureMap, scaledUv);
+
+            // Расчет освещения
+            float lightIntensity = max(dot(vNormal, vLightDir), 1.0);
+            vec4 finalColor = texColor * lightIntensity; // Умножаем цвет текстуры на интенсивность света
+
+            gl_FragColor = finalColor;
+        }`
+    ,
+    uniforms: {
+        bendStrength: { value: 0.02 },               // Сила изгиба
+        textureMap: { value: null },                 // Текстура
+        uvScale: { value: new THREE.Vector2(1, 1) } // Масштаб текстуры (по умолчанию 1:1)
+    }
+};
+
+const vertexShadere = `
+    varying vec3 vPosition;
+
+    void main() {
+        vPosition = position;
+
+        // Добавляем смещение для разрушения
+        vec3 newPosition = position + normal * sin(position.x * 10.0) * 0.5;
+
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0);
+    }
+`;
+
+const fragmentShadere = `
+    varying vec3 vPosition;
+
+    void main() {
+        gl_FragColor = vec4(vPosition * 0.5 + 0.5, 1.0);
+    }
+`;
+const colorBendingShader = {
+    vertexShader: `
+        uniform float bendStrength;
+        varying vec3 vNormal;        // Переменная для нормали
+        varying vec3 vViewPosition;  // Позиция камеры относительно объекта
+
+        void main() {
+            // Применение искривления
+            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+            float dist = length(mvPosition.xyz);
+            mvPosition.y -= bendStrength * pow(dist, 2.0);
+
+            vNormal = normalize(normalMatrix * normal); // Трансформируем нормаль
+            vViewPosition = -mvPosition.xyz; // Позиция камеры относительно объекта
+
+            gl_Position = projectionMatrix * mvPosition;
+        }
+    `,
+    fragmentShader: `
+        uniform vec3 materialColor;  // Цвет материала
+        uniform vec3 lightPosition;  // Позиция источника света
+        uniform vec3 lightColor;     // Цвет света
+        uniform float shininess;     // "Жесткость" бликов
+        uniform float specularStrength; // Интенсивность бликов
+
+        varying vec3 vNormal;        // Нормаль из вершинного шейдера
+        varying vec3 vViewPosition;  // Позиция камеры относительно объекта
+
+        void main() {
+            vec3 normal = normalize(vNormal); // Нормализуем нормаль
+            vec3 viewDir = normalize(vViewPosition); // Направление к камере
+
+            // Направление к источнику света
+            vec3 lightDir = normalize(lightPosition);
+
+            // Диффузное освещение (Lambert)
+            float diff = max(dot(normal, lightDir), 0.0);
+
+            // Спекулярное освещение (Blinn-Phong)
+            vec3 halfDir = normalize(lightDir + viewDir); // Направление полусуммы
+            float spec = pow(max(dot(normal, halfDir), 0.0), shininess);
+
+            // Итоговые составляющие освещения
+            vec3 diffuse = lightColor * materialColor * diff;
+            vec3 specular = lightColor * specularStrength * spec;
+
+            // Комбинируем цвета
+            vec3 finalColor = diffuse + specular;
+
+            gl_FragColor = vec4(finalColor, 1.0);
+        }
+    `,
+    uniforms: {
+        bendStrength: { value: 0.02 },                      // Сила изгиба
+        materialColor: { value: new THREE.Color(1.0, 0.0, 0.0) }, // Красный цвет
+        lightPosition: { value: new THREE.Vector3(10, 10, 10) },  // Позиция источника света
+        lightColor: { value: new THREE.Color(1.0, 1.0, 1.0) },    // Белый свет
+        shininess: { value: 32.0 },                           // Жесткость бликов
+        specularStrength: { value: 1.0 }                      // Интенсивность бликов
+    }
+};
+const colorBendingShader1 = {
+    vertexShader: `
+        uniform float bendStrength;
+        void main() {
+            // Применение искривления
+            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+            float dist = length(mvPosition.xyz);
+            mvPosition.y -= bendStrength * pow(dist, 2.0);
+
+            gl_Position = projectionMatrix * mvPosition;
+        }
+    `,
+    fragmentShader: `
+        uniform vec3 materialColor; // Униформа для цвета
+
+        void main() {
+            // Устанавливаем цвет объекта
+            gl_FragColor = vec4(materialColor, 1.0);
+        }
+    `,
+    uniforms: {
+        bendStrength: { value: 0.02 }, // Сила изгиба
+        materialColor: { value: new THREE.Color(1.0, 0.0, 0.0) } // По умолчанию красный цвет
+    }
+};
+class GameAudio {
+    constructor() {
+        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+        this.sounds = {};
+    }
+
+    loadSound(name, url) {
+        return fetch(url)
+            .then(response => response.arrayBuffer())
+            .then(data => this.audioContext.decodeAudioData(data))
+            .then(buffer => {
+                this.sounds[name] = buffer;
+            });
+    }
+
+    playSound(name) {
+        const sound = this.sounds[name];
+        if (!sound) return;
+
+        const source = this.audioContext.createBufferSource();
+        source.buffer = sound;
+        source.connect(this.audioContext.destination);
+        source.start(0);
+    }
+}
+
+ class Game {
+            constructor() {
+              // Загрузка аудио
+        this.backgroundMusic = new Audio('music.mp3');
+        this.backgroundMusic.loop = true;
+          //  this.start();
+          this.audio = new GameAudio();
+this.audio.loadSound('collect', 'collect.mp3');
+//this.audio.loadSound('crash', 'crash.mp3');
+
+                // Воспроизведение музыки при взаимодействии
+                document.body.addEventListener('click', () => {
+                    if (this.backgroundMusic.paused) {
+                        this.backgroundMusic.play().catch((error) => {
+                            console.error('Ошибка воспроизведения музыки:', error);
+                        });
+                    }
+                }, { once: true }); // Событие срабатывает только один раз
+
+              
+              this.bandStrength=0.02;
+  /*   this.backgroundMusic = new Audio('music.mp3');
+this.backgroundMusic.loop = true;
+this.backgroundMusic.play();
+this.collectSound = new Audio('collect.mp3');
+
+document.body.addEventListener('click', () => {
+        this.backgroundMusic.play().catch((error) => {
+          this.collectSound.play();
+            console.error('Ошибка воспроизведения музыки:', error);
+        });
+    }, { once: true }); // Убедимся, 
+    */
+    
+  
+    
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 110);
+             //  checkAndStartServer();
+          
+          /*
+// Добавление слушателя звука
+const listener = new THREE.AudioListener();
+this.camera.add(listener);
+
+// Создание объекта Audio
+this.sound = new THREE.Audio(listener);
+this.music = new THREE.Audio(listener);
+// Загрузка аудиофайла
+const audioLoader = new THREE.AudioLoader();
+audioLoader.load('./collect.mp3', function(buffer) {
+    this.music.setBuffer(buffer);
+    this.music.setVolume(1);
+    if(!this.music.isPlaying) this.music.play();
+        
+});
+*/
+
+/*
+audioLoader.load('collect.mp3', function(buffer) {
+    this.sound.setBuffer(buffer);
+    this.sound.setVolume(1);
+});*/
+
+
+    document.body.addEventListener('click', () => {
+       //  if(!this.music.isPlaying) this.music.play();
+         
+let gr = Array.from({ length: 64 }, () => Array(64).fill(0));
+
+// Проход по массиву blueSpheres и установка значений в grid
+for (let i = 0; i < this.blueSpheres.length; i++) {
+    let x = this.blueSpheres[i].position.x+32;
+    let z = this.blueSpheres[i].position.z+32;
+
+    // Проверяем, чтобы координаты были в пределах массива
+    if (x >= 0 && x < 64 && z >= 0 && z < 64) {
+        gr[x][z] = 1;
+    }
+}
+let sl="";let str="";
+for(let iy=0;iy<64;iy++){
+  sl="";
+ for(let ix=0;ix<64;ix++){
+   sl+=String(gr[ix][iy]);
+ }
+  str+=sl+"\n"
+}
+let x=Math.floor(32+this.player.position.x);
+let z=Math.floor(32+this.player.position.z);
+          this.sl=str;
+this.sl+=x+" "+z+"\n"
+         for(let ix=-1;ix<=1;ix++){
+                  str="";
+                      for(let iy=-1;iy<=1;iy++){
+                       let hhx=Math.floor(x+(ix*32))
+                       let hhy=Math.floor(z+(iy*32))
+                       str+="["+hhx+","+hhy+"]"
+                       
+          }
+           this.sl+=str+"\n"
+           
+         }
+         
+         
+         navigator.clipboard.writeText(this.sl)
+        //  this.sound.play();
+     });
+        
+          
+          
+          
+          
+                this.renderer = new THREE.WebGLRenderer();
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+          
+               document.body.appendChild(this.renderer.domElement);
+
+                this.gridSize = 64;
+                this.cellSize = 1;
+                this.grid = Array(this.gridSize).fill().map(() => Array(this.gridSize).fill(0));
+                
+                this.score = 0;
+                this.startTime = Date.now();
+                this.isGameOver = false;
+                this.isMoving = false;
+                
+                this.setupLights();
+                
+                this.createFloor();
+               
+                this.generateMaze();
+                this.createPlayer();   
+                
+                this.setupControls();
+                // Подключение EffectComposer из Three.js
+
+
+                this.animate = this.animate.bind(this);
+                requestAnimationFrame(this.animate);
+            }
+
+
+
+
+
+
+
+/*
+start(){
+  
+  fetch('startserver.php')
+    .then((e) => {
+      console.error(false, "ok "+e);
+        socket = new WebSocket('ws://localhost:8081');
+
+        socket.onopen = () => {
+            alert("connected")
+        };
+
+        socket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            console.log('Received data:', data);
+             alert("data:"+data)
+            // Обновление состояния игры для второго игрока
+        };
+
+        socket.onclose = () => {
+            console.log('Connection closed');
+        };
+
+        // Пример отправки данных
+        function sendPlayerData(x, z) {
+            socket.send(JSON.stringify({ x, z }));
+        }
+    })
+    .catch((err) => console.error('Error starting server:', err));
+}
+*/
+
+
+ setupLights() {
+              
+              
+              /*
+              
+              const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+    ambientLight.castShadow=true;
+    this.scene.add(ambientLight);*/
+     
+   const pointLight = new THREE.PointLight(0xffffff, 15.0, 100); // Белый свет
+    pointLight.position.set(10, 10, 10); // Позиция света
+   // pointLight.castShadow = true; // Включить генерацию теней
+
+    // Настройка карты теней
+/*    pointLight.shadow.mapSize.width = 1024;
+    pointLight.shadow.mapSize.height = 1024;
+   // pointLight.shadow.camera.near = 0.1;
+  //  pointLight.shadow.camera.far = 50;
+pointLight.shadow.camera.left = -10; // Левая граница камеры теней
+pointLight.shadow.camera.right = 10; // Правая граница камеры теней
+pointLight.shadow.camera.top = 10; // Верхняя граница камеры теней
+pointLight.shadow.camera.bottom = -10; // Нижняя граница камеры теней
+
+
+*/
+
+    this.scene.add(pointLight);
+
+    // Визуализатор источника света (по желанию)
+    //const lightHelper = new THREE.PointLightHelper(pointLight, 1);
+    //this.scene.add(lightHelper);
+/*
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    */
+    const textureLoader = new THREE.TextureLoader();
+        const skyTexture = textureLoader.load('sky1.jpg'); // Замените на URL вашей текстуры
+
+        // Создание сферы
+        const geometry1 = new THREE.SphereGeometry(50, 60, 40); // Большая сфера
+        const material1 = new THREE.MeshBasicMaterial({
+            map: skyTexture,
+            side: THREE.BackSide // Внутренняя сторона сферы будет видимой
+        });
+        this.skySphere = new THREE.Mesh(geometry1, material1);
+        this.scene.add(this.skySphere);
+            
+    
+}
+
+
+            createFloor() {
+                const geometry = new THREE.PlaneGeometry(this.gridSize * this.cellSize, this.gridSize * this.cellSize,64,64);
+                
+                
+           //.needsUpdate=true;
+            
+
+            
+              /*  const material = new THREE.MeshBasicMaterial({
+                    map: this.createCheckerTexture()
+                });*/
+    const tex=this.createCheckerTexture();
+   const material = new THREE.ShaderMaterial({
+    vertexShader: bendingShader1.vertexShader,
+    fragmentShader: bendingShader1.fragmentShader,
+    uniforms: {
+        bendStrength: { value: this.bandStrength },
+        textureMap: { value: tex },
+        uvScale: { value: new THREE.Vector2(8, 8) } // Увеличиваем частоту текстуры
+    }
+});
+                
+                geometry.computeVertexNormals()
+                this.floor = new THREE.Mesh(geometry, material);
+             //   floor.receiveShadow=true;
+             /*
+let position = this.floor.geometry.attributes.position;
+              alert(position.count)
+                for (let i=0;i<77;i++){
+                position.setZ(Math.random()*(position.count),6);
+                //position.setY(Math.random()*(positions.count),600);
+                }
+                this.floor.needsUpdate=true;
+                */
+               this.floor.rotation.x = -Math.PI/2;
+                this.scene.add(this.floor);
+                
+            }
+
+pareExplodingGeometry(geometry) {
+    const positions = [];
+    const directions = [];
+
+    const positionAttribute = geometry.attributes.position;
+    const vertexCount = positionAttribute.count;
+
+    for (let i = 0; i < vertexCount; i += 3) {
+        // Генерируем случайное направление для всего треугольника
+        const direction = new THREE.Vector3(
+            (Math.random() - 0.5),
+            (Math.random() - 0.5),
+            (Math.random() - 0.5)
+        ).normalize();
+
+        for (let j = 0; j < 3; j++) {
+            // Добавляем позицию вершины
+            positions.push(
+                positionAttribute.getX(i + j),
+                positionAttribute.getY(i + j),
+                positionAttribute.getZ(i + j)
+            );
+
+            // Добавляем направление для каждой вершины
+            directions.push(direction.x, direction.y, direction.z);
+        }
+    }
+
+    // Создаем новую геометрию
+    const newGeometry = new THREE.BufferGeometry();
+    newGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    newGeometry.setAttribute('direction', new THREE.Float32BufferAttribute(directions, 3));
+    return newGeometry;
+}
+
+ createLine = (start, end, color) => {
+  const points = [start, end];
+  const geometry = new THREE.BufferGeometry().setFromPoints(points);
+  const material = new THREE.LineBasicMaterial({ color });
+  return new THREE.Line(geometry, material);
+};
+
+createPlayer() {
+  
+  
+  
+  this.dir=1;
+    const geometry = new THREE.SphereGeometry(0.4,12,6);
+  this.geometry1 = new THREE.SphereGeometry(0.4,12,6);
+this.explodeMaterial = explodeShaderMaterial;
+
+    const material = new THREE.ShaderMaterial({
+        vertexShader: colorBendingShader.vertexShader,
+        fragmentShader: colorBendingShader.fragmentShader,
+        uniforms: {
+            bendStrength: { value: this.bandStrength },
+            materialColor: { value: new THREE.Color(0.0, 1.0, 0.0) }, // Зеленый цвет
+            lightPosition: { value: new THREE.Vector3(10, 10, 10) },
+            lightColor: { value: new THREE.Color(1.0, 1.0, 1.0) },
+            shininess: { value: 32.0 },
+            specularStrength: { value: 1.0 }
+        }
+    });
+    
+    
+/*
+    this.player = new THREE.Mesh(geometry, material);
+    this.player.position.set(0, 0.4, 0);
+    this.playerDirection = new THREE.Vector3(0, 0, 1);
+
+    // Включить тени для игрока
+    this.player.castShadow = true;
+    this.player.receiveShadow = true;
+*/
+
+const loader = new THREE.GLTFLoader();
+
+
+
+
+
+
+
+    loader.load('./sonicc.glb', (gltf) => {
+
+    gltf.scene.traverse((child) => {
+        if (child.isMesh) {
+            // Получаем текущий материал
+            const originalMaterial = child.material;
+
+            // Подменяем вершинный шейдер, сохраняя текстуры
+            originalMaterial.onBeforeCompile = (shader) => {
+                shader.uniforms.bendStrength = { value: 0.02 }; // Добавляем uniform
+                shader.vertexShader = shader.vertexShader.replace(
+                    '#include <begin_vertex>',
+                    `
+                    vec3 transformed = vec3(position);
+                    float dist = length(modelViewMatrix * vec4(position, 1.0));
+                    transformed.y -= bendStrength * pow(dist, 2.0);
+                    `
+                );
+            };
+        }
+    });
+
+    // Добавляем модель на сцену
+  
+       // Загрузка модели Sonic
+        const player1 = gltf.scene;
+        player1.scale.set(1.2, 1.2, 1.2); // Масштабируем модель
+        
+        
+        
+        
+        this.player = new THREE.Group();
+        
+this.player.add(player1)
+        player1.position.set(0, 0, 0);
+        
+        const boundingBox = new THREE.Box3().setFromObject(this.player);
+        const center = boundingBox.getCenter(new THREE.Vector3());
+        this.player.position.sub(center); // Смещаем модель к центру
+
+         this.player.position.set(this.startx, -0.55, this.startz); // Устанавливаем начальную позицию
+                this.pz=Math.floor(this.player.position.z/16);
+                this.px=Math.floor(this.player.position.x/16);
+                this.sx=0;
+                this.sx=0;
+        this.playerDirection = new THREE.Vector3(0, 0, 1); // Направление движения
+const origin = this.player.position.clone();
+this.scene.add(this.createLine(origin, origin.clone().add(new THREE.Vector3(1, 0, 0)), 0xff0000)); // X - красный
+this.scene.add(this.createLine(origin, origin.clone().add(new THREE.Vector3(0, 1, 0)), 0x00ff00)); // Y - зеленый
+this.scene.add(this.createLine(origin, origin.clone().add(new THREE.Vector3(0, 0, 1)), 0x0000ff)); // Z - синий
+
+// Настраиваем камеру
+
+// Настройка анимации
+        this.mixer = new THREE.AnimationMixer(this.player);
+        this.animations = gltf.animations;
+       // gltf.animations.forEach((clip) => {
+           // this.mixer.clipAction(clip).play();
+            this.mixer.clipAction(this.animations[4]).play();
+            this.standing=true;
+            
+            this.player.traverse((child) => {
+        if (child.isMesh) {
+        // this.geometry1= child.geometry;
+//console.log(this.geometry1.attributes.normal)
+        }
+    });
+    this.explodingGeometry = this.pareExplodingGeometry(this.geometry1);
+
+            
+       // });
+
+        // Включить тени для модели
+           gltf.scene.traverse((child) => {
+        if (child.isMesh) {
+            const originalMaterial = child.material;
+
+            // Добавляем uniform в шейдер
+            originalMaterial.onBeforeCompile = (shader) => {
+                // Добавляем uniform для bendStrength
+                shader.uniforms.bendStrength = { value: 0.02 };
+
+                // Изменяем вершинный шейдер для применения изгиба
+                shader.vertexShader = shader.vertexShader.replace(
+                    '#include <common>',
+                    `
+                    #include <common>
+                    uniform float bendStrength;
+                    `
+                );
+
+                shader.vertexShader = shader.vertexShader.replace(
+                    '#include <begin_vertex>',
+                    `
+                    vec3 transformed = vec3(position);
+                    float dist = length(modelViewMatrix * vec4(position, 1.0));
+                    transformed.y -= bendStrength * pow(dist, 2.0);
+                    `
+                );
+            };
+        }
+    })
+this.targetRotation = 0;
+    this.isRotating = false;
+    this.scene.add(this.player);
+
+
+
+
+this.setupCamera();
+
+              });
+    
+
+
+
+    
+}
+
+
+            setupCamera() {
+            
+                this.camera.position.set(0, 5, 5);
+                this.camera.lookAt(this.player.position);
+            }
+
+            createCheckerTexture() {
+                const canvas = document.createElement('canvas');
+                canvas.width = canvas.height = 512;
+                const ctx = canvas.getContext('2d');
+                const colors = ['#ffe84f', '#a35f11'];
+                const tileSize = canvas.width / 8;
+
+                for(let i = 0; i < 8; i++) {
+                    for(let j = 0; j < 8; j++) {
+                        ctx.fillStyle = colors[(i + j) % 2];
+                        ctx.fillRect(i * tileSize, j * tileSize, tileSize, tileSize);
+                    }
+                }
+
+                const texture = new THREE.CanvasTexture(canvas);
+                texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(8, 8);
+                return texture;
+            }
+
+loadImageToMap(imagePath, callback) {
+    const img = new Image();
+    img.src = imagePath;
+
+    img.onload = function () {
+
+                const canvas = document.createElement('canvas');
+                  const ctx = canvas.getContext('2d');
+
+                // Изменяем размер изображения до 32x32
+                ctx.drawImage(img, 0, 0, 32, 32);
+                
+                // Получаем данные пикселей
+                const imageData = ctx.getImageData(0, 0, 32, 32);
+                const data = imageData.data;
+                
+                // Создаем массив map
+                const map = [];
+
+                for (let x = 0; x < 32; x++) {
+                    const row = [];
+                    for (let y = 0; y < 32; y++) {
+                        const index = (y * 32 + x) * 4; // Индекс в массиве данных
+                        const r = data[index];     // Красный
+                        const g = data[index + 1]; // Зеленый
+                        const b = data[index + 2]; // Синий
+                          //console.log(r+" "+g+" "+b)
+                        // Определяем значение для массива map
+                        if (r > 200 && g > 200 && b < 100) {
+                            row.push(5); // желтый
+                        } else
+                        if (r > 200 && g < 100 && b < 100) {
+                            row.push(1); // Красный
+                        } else if (b <50 && r < 50 && g >200){
+                            row.push(4); // Другие цвета
+                        } else if (b > 200 && r < 100 && g < 100) {
+                            row.push(2); // Синий
+                        } else if (r > 175 && g > 125 && b> 140 && r < 185 && g <140 && b<160) {
+                            row.push(3); // Серый
+                        }  else {
+                            row.push(0); // Другие цвета
+                        }
+                       }
+                    map.push(row);
+                }
+
+               // console.log(map); // Выводим массив map в консоль
+      
+    
+        callback(map); // Возвращаем результат через коллбэк
+    };
+
+    img.onerror = function () {
+        console.error('Ошибка загрузки изображения:', imagePath);
+    };
+}
+
+
+createRing(x,y,z) {
+    // Создаем геометрию кольца
+    const geometry = new THREE.TorusGeometry(0.2, 0.06, 6, 22);
+
+    // Создаем материал с эффектом блеска
+    const material = new THREE.ShaderMaterial({
+        vertexShader: colorBendingShader.vertexShader,
+        fragmentShader: colorBendingShader.fragmentShader,
+        uniforms: {
+            bendStrength: { value: this.bandStrength },
+            materialColor: { value: new THREE.Color(1.0, 1.0, 0.0) },
+            lightPosition: { value: new THREE.Vector3(10, 10, 10) },
+            lightColor: { value: new THREE.Color(1.0, 1.0, 1.0) },
+            shininess: { value: 32.0 },
+            specularStrength: { value: 1.0 }
+        }
+    });
+
+    // Создаем кольцо
+    const ring = new THREE.Mesh(geometry, material);
+    ring.position.set(x,y,z); // Устанавливаем позицию кольца
+    this.scene.add(ring);
+
+    // Анимация блеска кольца
+    return ring;
+}
+
+addring(i,j){
+  for(let ix=-1;ix<=1;ix++){
+           for(let iy=-1;iy<=1;iy++){
+                let tx=16+i+(ix*32);
+                let ty=16+j+(iy*32);
+               if((tx>-1)&&(ty>-1)&&(tx<64)&&(ty<64)){
+                 
+                 
+                 
+                 const sphere = this.createRing(tx-(this.gridSize/2), 0.3,ty-(this.gridSize/2));
+               //  sphere.position.set(tx-(this.gridSize/2), 0.3,ty-(this.gridSize/2));
+                this.grid[tx][ty] =5;
+                
+                this.rings.push(sphere);
+                this.scene.add(sphere);
+               }
+       }}//for
+  
+  
+  
+}
+
+
+generateMaze() {
+               
+              // console.log(THREE.BufferGeometryUtils)
+    this.k1=16;this.k2=8;
+    this.redSpheres = [];
+    this.blueSpheres = [];
+    this.starSpheres = [];
+this.collectedSpheres = [];
+    this.rings= [];
+    this.cameraAngle=0;
+    
+    
+    
+    const geometry = new THREE.SphereGeometry(0.3, this.k1, this.k2);
+
+  this.bluematerial = new THREE.ShaderMaterial({
+        vertexShader: colorBendingShader.vertexShader,
+        fragmentShader: colorBendingShader.fragmentShader,
+        uniforms: {
+            bendStrength: { value: this.bandStrength },
+            materialColor: { value: new THREE.Color(0.0, 0.0, 1.0) },
+            lightPosition: { value: new THREE.Vector3(10, 10, 10) },
+            lightColor: { value: new THREE.Color(1.0, 1.0, 1.0) },
+            shininess: { value: 32.0 },
+            specularStrength: { value: 1.0 }
+        }
+    });
+
+    this.redmaterial = new THREE.ShaderMaterial({
+        vertexShader: colorBendingShader.vertexShader,
+        fragmentShader: colorBendingShader.fragmentShader,
+        uniforms: {
+            bendStrength: { value: this.bandStrength },
+            materialColor: { value: new THREE.Color(1.0, 0.0, 0.0) },
+            lightPosition: { value: new THREE.Vector3(10, 10, 10) },
+            lightColor: { value: new THREE.Color(1.0, 1.0, 1.0) },
+            shininess: { value: 32.0 },
+            specularStrength: { value: 1.0 }
+        }
+    });
+
+
+const textureLoader = new THREE.TextureLoader();
+const startex = textureLoader.load('star.jpg'); // Замените на URL вашей текстуры
+
+
+
+   this.starmaterial = new THREE.ShaderMaterial({
+    vertexShader: bendingShader1.vertexShader,
+    fragmentShader: bendingShader1.fragmentShader,
+    uniforms: {
+        bendStrength: { value: this.bandStrength },
+        textureMap: { value: startex },
+        uvScale: { value: new THREE.Vector2(1, 1) } // Увеличиваем частоту текстуры
+    }
+    });
+    
+    
+    
+    /*
+for(let i=14;i<=48;i++){
+        this.grid[i][14]=3;
+        let sphere = new THREE.Mesh(geometry, starmaterial);
+        sphere.position.set(i-(this.gridSize/2), 0.4,14-(this.gridSize/2));
+        // Включить тени для стены
+        sphere.castShadow = true;
+        sphere.receiveShadow = true;
+      this.redSpheres.push(sphere);
+        this.scene.add(sphere);
+        this.grid[i][48]=3;
+        sphere = new THREE.Mesh(geometry, starmaterial);
+        sphere.position.set(i-(this.gridSize/2), 0.4, 48-(this.gridSize/2));
+        // Включить тени для стены
+     //   sphere.castShadow = true;
+      //  sphere.receiveShadow = true;
+      this.redSpheres.push(sphere);
+        this.scene.add(sphere);
+        this.grid[14][i]=3;
+        sphere = new THREE.Mesh(geometry, starmaterial);
+        sphere.position.set(14-(this.gridSize/2), 0.4, i-(this.gridSize/2));
+        // Включить тени для стены
+    //    sphere.castShadow = true;
+    //    sphere.receiveShadow = true;
+      this.redSpheres.push(sphere);
+        this.scene.add(sphere);
+        this.grid[48][i]=3;
+        sphere = new THREE.Mesh(geometry, starmaterial);
+        sphere.position.set(48-(this.gridSize/2), 0.4, i-(this.gridSize/2));
+        // Включить тени для стены
+     //   sphere.castShadow = true;
+     //   sphere.receiveShadow = true;
+      this.starSpheres.push(sphere);
+        this.scene.add(sphere);
+      }
+      */
+      this.level=this.getLevel();
+this.loadImageToMap('map'+this.level+'.png', (map) => {
+ this.sl="";
+    for(let i=0;i<32;i++){
+      
+      for(let j=0;j<32;j++){
+       let mater=null;
+       if(map[i][j]==1)mater=this.redmaterial;
+       if(map[i][j]==2)mater=this.bluematerial;
+       if(map[i][j]==3)mater=this.starmaterial;
+       if(map[i][j]==5){
+    
+        
+       this.addring(i,j)
+       
+         
+         
+       }
+       if(map[i][j]==4){this.startx=16+i-(this.gridSize/2);this.startz=16+j-(this.gridSize/2);  }
+       if(map[i][j]>0&&map[i][j]!=4){
+         
+//const sphere = new THREE.Mesh(geometry, mater);
+    //    sphere.position.set(16+i-(this.gridSize/2), 0.3,16+ j-(this.gridSize/2));
+        this.grid[16+i][16+j] = map[i][j];
+        
+        
+        // Включить тени для стены
+    //    sphere.castShadow = true;
+  //    sphere.receiveShadow = true;
+      
+     if(map[i][j]==1){  
+        for(let ix=-1;ix<=1;ix++){
+           for(let iy=-1;iy<=1;iy++){
+                let tx=16+i+(ix*32);
+                let ty=16+j+(iy*32);
+               if((tx>-1)&&(ty>-1)&&(tx<64)&&(ty<64)){
+                 const sphere = new THREE.Mesh(geometry, mater);
+                 sphere.position.set(tx-(this.gridSize/2), 0.3,ty-(this.gridSize/2));
+                this.grid[tx][ty] =1;
+                
+                this.redSpheres.push(sphere);
+                this.scene.add(sphere);
+               }
+       }}//for
+       
+     }
+     
+     if(map[i][j]==2){   
+    
+           for(let ix=-1;ix<=1;ix++){
+           for(let iy=-1;iy<=1;iy++){
+             
+                let tx=16+i+(ix*32);
+                let ty=16+j+(iy*32);
+               if((tx>-1)&&(ty>-1)&&(tx<64)&&(ty<64)){
+                
+                 
+                 const sphere = new THREE.Mesh(geometry, mater);
+                 sphere.position.set(tx-(this.gridSize/2), 0.3,ty-(this.gridSize/2));
+                 
+              
+                this.grid[tx][ty] = 2;
+                this.blueSpheres.push(sphere);
+                this.scene.add(sphere);
+               }
+             
+           
+       }}//for*/
+       
+     }
+     if(map[i][j]==3){  
+
+        for(let ix=-1;ix<=1;ix++){
+           for(let iy=-1;iy<=1;iy++){
+            
+                let tx=16+i+(ix*32);
+                let ty=16+j+(iy*32);
+               if((tx>-1)&&(ty>-1)&&(tx<64)&&(ty<64)){
+                 const sphere = new THREE.Mesh(geometry, mater);
+                 sphere.position.set(tx-(this.gridSize/2), 0.3,ty-(this.gridSize/2));
+                this.grid[tx][ty] = 3;
+                this.starSpheres.push(sphere);
+                this.scene.add(sphere);
+               }
+             
+           
+       }}//for
+     }
+    
+        
+
+
+      }
+  
+    }
+    
+    
+    }
+    
+    
+  
+  
+});
+
+    
+    
+}
+
+
+            setupControls() {
+                document.addEventListener('keydown', this.handleKeyDown.bind(this));
+                document.addEventListener('touchstart', this.handleTouchStart.bind(this));
+                document.addEventListener('touchmove', this.handleTouchMove.bind(this));
+                document.addEventListener('touchend', this.handleTouchEnd.bind(this));
+            }
+
+            handleKeyDown(e) {
+                if(this.isGameOver || this.isRotating) return;
+
+                switch(e.key) {
+                    case 'ArrowLeft':
+                        this.rotate(Math.PI/2);
+                        break;
+                    case 'ArrowRight':
+                        this.rotate(-Math.PI/2);
+                        break;
+                    case 'ArrowUp':
+                        this.startMoving();
+                        break;
+                }
+            }
+
+            handleTouchStart(e) {
+              
+                if(this.isGameOver) {
+                    this.restart();
+                    return;
+                }
+                
+                
+                
+                if(e.touches[0].clientX>window.innerWidth/2){
+                    this.rotate(-Math.PI/2);
+                    this.touchStart = null;
+                }else{
+                 this.rotate(Math.PI/2);
+                    this.touchStart = null; 
+                  
+                }
+                this.touchStart = {
+                    x: e.touches[0].clientX,
+                    y: e.touches[0].clientY
+                };
+            }
+
+            handleTouchMove(e) {
+                if(!this.touchStart || this.isRotating) return;
+/*
+                const deltaX = e.touches[0].clientX - this.touchStart.x;
+                if(Math.abs(deltaX) > 50) {
+                    this.rotate(deltaX > 0 ? -Math.PI/2 : Math.PI/2);
+                    this.touchStart = null;
+                }*/
+            }
+
+            handleTouchEnd(e) {  
+                if(e.touches.length === 0) {
+                    this.startMoving();
+                }
+            }
+            
+radtodeg = rad => (rad * 180.0) / Math.PI;
+degtorad = deg => (deg * Math.PI) / 180.0;
+
+            rotate(angle){
+              
+              if(this.dir==-1){this.dir=1;}
+            
+             // console.log(this.player.position.x+" "+this.player.position.z)
+                    //  console.log("new "+this.player.position.x+" "+this.player.position.z)
+                      
+                      if(this.standing){this.mixer.clipAction(this.animations[0]).play();
+                        this.mixer.timeScale=250*this.delta;
+                        this.standing=false;
+                      }
+             
+                      
+                      
+              this.player.position.z=Math.round(this.player.position.z);
+              this.player.position.x=Math.round(this.player.position.x);
+              
+              
+                this.targetRotation = this.degtorad(Math.round(this.radtodeg(this.player.rotation.y + angle)/90)*90);
+                console.log( this.radtodeg(this.targetRotation))
+                this.isRotating = true;
+            }
+
+            startMoving() {
+                if(!this.isMoving) {
+                    this.isMoving = true;
+                }
+            }
+
+            movePlayer() {
+              
+                if(!this.isMoving) return;
+              let sposx=Math.round(this.player.position.x + this.gridSize/2);
+              let sposz=Math.round(this.player.position.z + this.gridSize/2);
+                const nextPos = this.player.position.clone();
+                const testpos = this.player.position.clone();
+                
+              if(!this.isRotating){
+                nextPos.x += this.playerDirection.x *this.dir* 4*this.delta;
+                nextPos.z += this.playerDirection.z *this.dir* 4*this.delta;
+                
+              this.skySphere.rotation.z+=this.playerDirection.x * 0.01*this.delta;
+              this.skySphere.rotation.x-=this.playerDirection.z * 0.01*this.delta;
+
+               }
+                
+
+testpos.x += this.playerDirection.x * this.dir*0.5;
+testpos.z += this.playerDirection.z * this.dir*0.5;
+         
+
+                const gridX = Math.round(testpos.x + this.gridSize/2);
+                const gridZ = Math.round(testpos.z + this.gridSize/2);
+              this.player.position.copy(nextPos);
+
+             if(gridX!=sposx||gridZ!=sposz){
+               sposx=gridX;sposz=gridZ;
+                if(gridX >= 0 && gridX < this.gridSize && gridZ >= 0 && gridZ < this.gridSize) {
+                
+                if(this.grid[gridX][gridZ] === 0) {
+                   let x=gridX;let z=gridZ;
+                  const isClosed = this.checkClosure(x,z);
+    
+        // Если путь замкнут, обновляем область
+        if (isClosed) {
+         //   alert(x+" "+z)
+            this.collectedSpheres.length=0;
+            this.fillClosedArea(x, z);
+        }
+                }
+                    if(this.grid[gridX][gridZ] === 1) {
+                        this.gameOver();
+                        return;
+                    }
+                    if(this.grid[gridX][gridZ] === 2) {
+                        this.collectSphere(gridX, gridZ);
+                    }
+                    if(this.grid[gridX][gridZ] === 5) {
+                        this.collectRing(gridX, gridZ);
+                    }
+                    if(this.grid[gridX][gridZ] === 3) {
+                        this.dir*=-1;
+                    }
+                    
+                }
+             }
+            }
+
+
+                
+removeblue(x,z){
+const spheresToRemove = [];
+for(let i = 0; i < this.blueSpheres.length; i++) {
+                    const sphere = this.blueSpheres[i];
+                    
+                    for(let ix=-1;ix<=1;ix++){
+                      for(let iy=-1;iy<=1;iy++){
+                       let hhx=x+(ix*32)
+                       let hhy=z+(iy*32)
+                       let gjx=Math.floor(x+(ix*32));
+                       let gjy=Math.floor(z+(iy*32));
+                    //  alert(hhx+" "+hhy+" "+gjx+" "+gjy+" ")
+                       
+                    if(Math.floor(sphere.position.x+32) === Math.floor(x+(ix*32)) && 
+                       Math.floor(sphere.position.z+32) === Math.floor(z+(iy*32))) {
+                       
+spheresToRemove.push(sphere);
+                       
+                      //  this.scene.remove(sphere);
+                      //  this.blueSpheres.splice(i, 1);
+                        break;
+                    }
+                      }//y
+                    }//x
+                    
+                    
+                    
+                }
+// Удаляем сферы из сцены и массива
+for (const sphere of spheresToRemove) {
+    this.scene.remove(sphere);
+    this.blueSpheres =this.blueSpheres.filter(s => s !== sphere);
+}
+}
+
+            collectSphere(x, z) {
+this.audio.playSound('collect')
+  // Звук аварии
+            //  alert(x+" "+z+" collectedSpheres "+this.collectedSpheres.length)
+            //  this.collectSound.play();
+                this.grid[x][z] = 0;
+                     this.score++;
+               // document.getElementById('score').textContent = this.score;
+                
+              
+                this.removeblue(x,z);
+            this.collectedSpheres.push({ x, z });
+           
+     
+
+                if(this.blueSpheres.length === 0) {
+                    this.win();
+                }
+            }
+
+    // Проверяем, замкнута ли область
+    checkClosure(x, z) {
+        for (const point of this.collectedSpheres) {
+            if (point.x === x && point.z === z) {
+                return true; // Замыкание найдено
+            }
+        }
+        return false;
+    }
+
+    // Заливаем замкнутую область значением 5
+    fillClosedArea(startX, startZ) {
+        const queue = [{ x: startX, z: startZ }];
+        const visited = new Set();
+        const key = (x, z) => `${x},${z}`;
+
+        while (queue.length > 0) {
+            const { x, z } = queue.pop();
+            if (visited.has(key(x, z))) continue;
+
+            visited.add(key(x, z));
+
+            // Обновляем значение клетки
+            if (this.grid[x][z] == 2) { // Не изменяем стены
+                this.grid[x][z] = 5;
+                this.removeblue(x,z);
+                this.addring(x,z)
+               
+
+
+                // Добавляем соседние клетки в очередь
+                const neighbors = [
+                    { x: x + 1, z },
+                    { x: x - 1, z },
+                    { x, z: z + 1 },
+                    { x, z: z - 1 },
+                ];
+                for (const neighbor of neighbors) {
+                    if (
+                        neighbor.x >= 0 &&
+                        neighbor.x < this.gridSize &&
+                        neighbor.z >= 0 &&
+                        neighbor.z < this.gridSize &&
+                        !visited.has(key(neighbor.x, neighbor.z)) &&
+                        this.grid[neighbor.x][neighbor.z] !== 1 // Пропускаем стены
+                    ) {
+                        queue.push(neighbor);
+                    }
+                }
+            }
+        }
+    }
+
+
+
+collectRing(x, z) {
+this.audio.playSound('collect')
+  // Звук аварии
+             // alert(x+" "+z)
+            //  this.collectSound.play();
+                this.grid[x][z] = 0;
+                this.score++;
+               // document.getElementById('score').textContent = this.score;
+                
+              
+                
+                
+                
+                
+                       
+const ringsToRemove = [];
+                for(let i = 0; i < this.rings.length; i++) {
+                    const sphere = this.rings[i];
+                    
+                    for(let ix=-1;ix<=1;ix++){
+                      for(let iy=-1;iy<=1;iy++){
+                       let hhx=x+(ix*32)
+                       let hhy=z+(iy*32)
+                       let gjx=Math.floor(x+(ix*32));
+                       let gjy=Math.floor(z+(iy*32));
+                    //  alert(hhx+" "+hhy+" "+gjx+" "+gjy+" ")
+                       
+                    if(Math.floor(sphere.position.x+32) === Math.floor(x+(ix*32)) && 
+                       Math.floor(sphere.position.z+32) === Math.floor(z+(iy*32))) {
+                       
+ringsToRemove.push(sphere);
+                       
+                      //  this.scene.remove(sphere);
+                      //  this.blueSpheres.splice(i, 1);
+                        break;
+                    }
+                      }//y
+                    }//x
+                    
+                    
+                    
+                }
+
+
+// Удаляем сферы из сцены и массива
+for (const sphere of ringsToRemove) {
+    this.scene.remove(sphere);
+    this.rings =this.rings.filter(s => s !== sphere);
+}
+
+
+               /* if(this.blueSpheres.length === 0) {
+                    this.win();
+                }*/
+            }
+
+
+
+
+setLevel(newLevel) {
+    sessionStorage.setItem('level', newLevel);
+}
+getLevel() {
+    return sessionStorage.getItem('level') || 1; // Возвращаем уровень по умолчанию (например, 1)
+}
+win() {
+                alert(this.level+' уровень пройден');
+                this.setLevel(Number(this.level)+1)
+                this.restart();
+}
+gameOver() {
+
+const explodingSphere = new THREE.Mesh(this.explodingGeometry, this.explodeMaterial);
+explodingSphere.position.copy(this.player.position)
+
+
+this.scene.remove(this.player);
+this.scene.add(explodingSphere);
+
+                this.standing=true;
+                this.player.material=this.explodeMaterial;
+                this.isGameOver = true;
+                this.isMoving = false;
+                document.getElementById('gameOver').style.display = 'block';
+            }
+
+            
+
+            restart() {
+                location.reload();
+            }
+ clock = new THREE.Clock();
+ 
+ 
+lastFrameTime = 0;
+ frameCount = 0;
+ fps = 0;
+
+updateFPS() {
+    const currentTime = performance.now();
+    this.frameCount++;
+    if (currentTime - this.lastFrameTime >= 1000) {
+        this.fps = this.frameCount;
+        this.frameCount = 0;
+        this.lastFrameTime = currentTime;
+        document.getElementById('fpsCounter').textContent = this.fps;
+        //document.getElementById('fpsCounter').textContent = this.delta;
+   
+    }
+}
+
+ 
+ 
+ 
+ delta=0;
+            animate() {
+           
+              
+                requestAnimationFrame(this.animate);
+                this.updateFPS()
+               this.delta=this.clock.getDelta();
+              
+                if(this.playerDirection==undefined)return;
+              
+                if(this.isGameOver)this.explodeMaterial.uniforms.time.value+= this.clock.getDelta();
+if (this.mixer) {
+      
+        this.mixer.update(this.delta); // Обновляем анимацию модели
+    }
+                if(this.isRotating) {
+                    const rotationDiff = this.targetRotation - this.player.rotation.y;
+                    if(Math.abs(rotationDiff) > 0.2) {
+                        this.player.rotation.y += rotationDiff *8*this.delta ;
+                        this.playerDirection.applyAxisAngle(new THREE.Vector3(0, 1, 0), rotationDiff * 8* this.delta);
+                    } else {
+                        this.isRotating = false;
+                        this.player.rotation.y=this.targetRotation;
+                      this.playerDirection.x=Math.round(this.playerDirection.x)
+                      this.playerDirection.z=Math.round(this.playerDirection.z)
+                      
+                  
+                      this.player.position.z=Math.round(this.player.position.z)//+0.5;
+                      this.player.position.x=Math.round(this.player.position.x)//+0.5;
+                   //  document.getElementById('score').textContent = this.player.position.x+" "+this.player.position.z;
+                     
+                
+                      
+                   
+                    }
+                    
+                    
+              
+                }
+                     if(this.player.position.z>=16)this.player.position.z=-16.001;else
+                     if(this.player.position.x>=16)this.player.position.x=-16.001;else
+                     if(this.player.position.z<=-16)this.player.position.z=16.001;else
+                     if(this.player.position.x<=-16)this.player.position.x=16.001;
+//document.getElementById('score').textContent = this.player.position.x+" "+this.player.position.z;
+   // Анимация вращения колец
+                for (const ring of this.rings) {
+                    ring.rotation.y += 2*this.delta;
+                }
+
+
+
+                
+                /*
+                this.pz=Math.floor((this.player.position.z)/16);
+                this.px=Math.floor((this.player.position.x)/16);
+                
+                
+              //  document.getElementById('score').textContent ="playerx "+this.player.position.x+"playerz "+this.player.position.z+" "+this.px+" "+this.pz;
+                
+              //console.log(this.sx+" "+this.px+" "+this.sz+" "+this.pz+" ")
+                if(this.sx!=this.px||this.sz!=this.pz){
+                  let x1=(this.px+1)*32
+                  let x2=(this.px+2)*32
+                  let z1=(this.pz+1)*32
+                  let z2=(this.pz+2)*32
+               // document.getElementById('score').textContent=x1+" "+z1+" "+x2+" "+z2+" ";
+
+               let ss=""
+                   for(let j=z1;j<z2;j++){
+                   for(let i=x1;i<x2;i++){  
+                       if(!(i>15&&i<48&&j>15&&j<48)){
+                         
+                        let nx=Math.floor((i-32)/16);
+                        let nz=Math.floor((j-32)/16)
+                         
+                       let ii=(i+((this.px-nx)*32))
+                       let jj=(j+((this.pz-nz)*32))
+                       //  let haz=this.pz-nz
+                       //  let hax=this.px-nx
+                         ss+='|['+ii+" "+jj+"]"
+                         
+                         
+                         if(ii<64&&jj<64){
+                         let mater=null;
+       if(this.grid[ii][jj]==1)mater=this.redmaterial;
+       if(this.grid[ii][jj]==2)mater=this.bluematerial;
+       if(this.grid[ii][jj]==3)mater=this.starmaterial;
+      // if(this.grid[ii][jj]==4){this.startx=15+i-(this.gridSize/2);this.startz=15+j-(this.gridSize/2);  }
+       if(this.grid[ii][jj]>0&&this.grid[ii][jj]!=4){
+       const geometry = new THREE.SphereGeometry(0.4, 32, 16);
+
+const sphere = new THREE.Mesh(geometry, mater);
+        sphere.position.set(i-(this.gridSize/2), 0.4, j-(this.gridSize/2));
+       // this.grid[15+i][15+j] = map[i][j];
+        
+        // Включить тени для стены
+    //    sphere.castShadow = true;
+  //    sphere.receiveShadow = true;
+     if(this.grid[ii][jj]==1)   this.redSpheres1.push(sphere);
+     if(this.grid[ii][jj]==2)   this.blueSpheres1.push(sphere);
+     if(this.grid[ii][jj]==3)   this.starSpheres1.push(sphere);
+     
+        this.scene.add(sphere);
+                         
+                         
+                         
+                        // this.scene.remove(sphere);
+                         
+                         
+                       }
+                         }//<64
+                     
+                     }else ss+="|X";
+                     
+                     
+                   }
+                  ss+='\n';
+                }
+              //  alert(ss)
+                
+              // navigator.clipboard.writeText(ss)
+               
+               
+                this.sx=this.px;this.sz=this.pz;
+                  
+                }*/
+                if(this.standing){
+        const x = this.player.position.x + 4 * Math.cos(this.cameraAngle);
+        const z = this.player.position.z + 4 *Math.sin(this.cameraAngle);
+        
+         this.cameraAngle+=1*this.delta;
+        // Устанавливаем позицию камеры
+        this.camera.position.set(x,4, z);
+                  
+                  
+                  
+                }else{
+                if(!this.isGameOver) {
+                    this.movePlayer();
+                    document.getElementById('timer').textContent = 
+                        ((Date.now() - this.startTime) / 1000).toFixed(1);
+                }
+
+                // Update camera
+                this.cameraOffset=undefined;
+          /*   if(window.innerWidth>window.innerHeight)  {  this.cameraOffset = this.playerDirection.clone().multiplyScalar(-3);this.camera.position.y = 3;this.bandStrength=0.001}
+              else { this.cameraOffset = this.playerDirection.clone().multiplyScalar(-5);this.camera.position.y = 5;this.bandStrength=0.02;}
+              */
+              this.cameraOffset = this.playerDirection.clone().multiplyScalar(-5);this.camera.position.y = 5;this.bandStrength=0.02;
+              
+                this.camera.position.x = this.player.position.x + this.cameraOffset.x;
+                this.camera.position.z = this.player.position.z + this.cameraOffset.z;
+                }
+                this.camera.lookAt(this.player.position);
+
+               this.renderer.render(this.scene, this.camera);
+            }
+       
+        }
+
+       const game = new Game();
+
+ window.addEventListener('resize', () => {
+    const aspect = window.innerWidth / window.innerHeight;
+    
+    // Настраиваем FOV для одинакового обзора
+    game.camera.fov = aspect < 1 ? 75 / aspect : 40; // Уменьшаем поле зрения в портретной ориентации
+    
+  
+  
+  game.camera.aspect = aspect;
+  game.camera.updateProjectionMatrix();
+    // Изменяем размер рендера
+    game.renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+        
+        
+        
+    </script>
+</body>
+</html>

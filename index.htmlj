@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E1 Framework</title>
+    <style>
+        canvas {
+            border: 1px solid #000;
+            touch-action: none; /* Отключаем стандартное поведение касания */
+        }
+    </style>
+</head>
+<body>
+    <script>
+        class E1Container {
+            constructor(type, wid, hei) {
+                this.type = type; // 'scroll' or 'overlay'
+                this.objects = [];
+                this.offsetX = 0;
+                this.offsetY = 0;
+                this.scale = 1;
+
+                this.canvas = document.createElement('canvas');
+                this.ctx = this.canvas.getContext('2d');
+                document.body.appendChild(this.canvas);
+                this.resize(wid, hei);
+
+                if (this.type === 'scroll') {
+                    this.initScrollEvents();
+                }
+            }
+
+            resize(wid, hei) {
+                this.canvas.width = wid;
+                this.canvas.height = hei;
+                this.render();
+            }
+
+            initScrollEvents() {
+                // Mouse Wheel Zoom
+                this.canvas.addEventListener('wheel', (e) => {
+                    e.preventDefault();
+                    const scaleAmount = e.deltaY > 0 ? 0.9 : 1.1;
+                    this.scale *= scaleAmount;
+                    this.render();
+                });
+
+                // Mouse Drag
+                let isDragging = false;
+                let startX, startY;
+
+                const mouseDownHandler = (e) => {
+                    isDragging = true;
+                    startX = e.clientX - this.offsetX;
+                    startY = e.clientY - this.offsetY;
+                };
+
+                const mouseUpHandler = () => {
+                    isDragging = false;
+                };
+
+                const mouseMoveHandler = (e) => {
+                    if (isDragging) {
+                        this.offsetX = e.clientX - startX;
+                        this.offsetY = e.clientY - startY;
+                        this.render();
+                    }
+                };
+
+                this.canvas.addEventListener('mousedown', mouseDownHandler);
+                this.canvas.addEventListener('mouseup', mouseUpHandler);
+                this.canvas.addEventListener('mousemove', mouseMoveHandler);
+
+                // Touch Events for Mobile
+                this.canvas.addEventListener('touchstart', (e) => {
+                    isDragging = true;
+                    startX = e.touches[0].clientX - this.offsetX;
+                    startY = e.touches[0].clientY - this.offsetY;
+                });
+
+                this.canvas.addEventListener('touchend', () => {
+                    isDragging = false;
+                });
+
+                this.canvas.addEventListener('touchmove', (e) => {
+                    if (isDragging) {
+                        this.offsetX = e.touches[0].clientX - startX;
+                        this.offsetY = e.touches[0].clientY - startY;
+                        this.render();
+                    }
+                });
+            }
+
+            addObject(object) {
+                this.objects.push(object);
+                this.render();
+            }
+
+            render() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                this.ctx.save();
+                this.ctx.translate(this.offsetX, this.offsetY);
+                this.ctx.scale(this.scale, this.scale);
+
+                for (let obj of this.objects) {
+                    obj.render(this.ctx);
+                }
+
+                this.ctx.restore();
+            }
+        }
+
+        class ImageObject {            constructor(id, url, x1, y1, x2, y2, r) {
+                this.id = id;
+                this.url = url;
+                this.x1 = x1;
+                this.y1 = y1;
+                this.x2 = x2;
+                this.y2 = y2;
+                this.r = r; // rotation
+                this.image = new Image();
+                this.image.src = url;
+            }
+
+            render(ctx) {
+                ctx.save();
+                ctx.translate((this.x1 + this.x2) / 2, (this.y1 + this.y2) / 2);
+                ctx.rotate(this.r * Math.PI / 180);
+                ctx.drawImage(this.image, -((this.x2 - this.x1) / 2), -((this.y2 - this.y1) / 2), 
+                              (this.x2 - this.x1), (this.y2 - this.y1));
+                ctx.restore();
+            }
+        }
+
+        class AnimatedImageObject extends ImageObject {
+            constructor(id, url, x1, y1, x2, y2, r, kx, ky) {
+                super(id, url, x1, y1, x2, y2, r);
+                this.kx = kx; // frames in horizontal direction
+                this.ky = ky; // frames in vertical direction
+                this.currentFrame = 0;
+
+                // Load the image
+                this.image.onload = () => {
+                    setInterval(() => {
+                        this.currentFrame = (this.currentFrame + 1) % (kx * ky);
+                        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+                        ctx.save();
+                        ctx.translate((this.x1 + this.x2) / 2, (this.y1 + this.y2) / 2);
+                        ctx.rotate(this.r * Math.PI / 180);
+                        const frameWidth = (this.x2 - this.x1) / kx;
+                        const frameHeight = (this.y2 - this.y1) / ky;
+
+                        const sx = (this.currentFrame % kx) * frameWidth;
+                        const sy = Math.floor(this.currentFrame / kx) * frameHeight;
+
+                        ctx.drawImage(this.image, sx, sy, frameWidth, frameHeight,
+                                      -frameWidth / 2, -frameHeight / 2, frameWidth, frameHeight);
+                        ctx.restore();
+                    }, 100); // Change frame every 100ms
+                };
+            }
+        }
+
+        class TextObject {
+            constructor(id, text, x1, y1, x2, y2, r, fontUrl, fit=true) {
+                this.id = id;
+                this.text = text;
+                this.x1 = x1;
+                this.y1 = y1;
+                this.x2 = x2;
+                this.y2 = y2;
+                this.r = r; // rotation
+                this.fit = fit;
+
+                const fontFace = new FontFace('CustomFont',"url("+fontUrl+")");
+                fontFace.load().then(() => {
+                    document.fonts.add(fontFace);
+                    
+                
+                    
+                });
+            }
+
+            render(ctx) {
+               // Render logic as above
+               
+               ctx.font = this.fit ? Math.min(Math.abs(this.x2-this.x1), Math.abs(this.y2-this.y1)) / 10 : 16+"px CustomFont";
+                    
+ctx.fillText(this.text, this.x1,this. y1);
+                    ctx.restore();
+                  //  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+                    ctx.save();
+                    ctx.translate((this.x1 + this.x2) / 2, (this.y1 + this.y2) / 2);
+                    ctx.rotate(this.r * Math.PI / 180);
+                    ctx.fillText(this.text, -ctx.measureText(this.text).width / 2, 0);
+                    ctx.restore();
+               
+               
+               
+            }
+        }
+
+        // Пример использования
+        const scrollContainer = new E1Container('scroll', 800, 600);
+       scrollContainer.addObject(new ImageObject('img1', 'https://via.placeholder.com/150', 50, 50, 150, 150, 0));
+        scrollContainer.addObject(new TextObject('text1', 'Hello World!', 200, 200, 400, 250, 0, '/font0.ttf'));
+    </script>
+</body>
+</html>

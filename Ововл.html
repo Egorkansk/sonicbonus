@@ -1,0 +1,878 @@
+
+    class ec {
+        wai=false;
+        count=null;
+        first = true;
+        type = [];
+        bit = [];
+        value = [];
+        str = [];
+        font = [];
+        fsize = [];
+        x1 = [];
+        y1 = [];
+        x2 = [];
+        y2 = [];
+        col = [];
+
+
+        sdx= [];
+        sdy= [];
+        dx = [];
+        dy = [];
+
+        sx = [];
+        sy = [];
+        k = [];
+
+        an = [];
+        sp = [];
+        n = [];
+
+        zm = [];
+        rot = [];
+
+
+        mx;
+        my;
+        mx1;
+        my1;
+        mx2;
+        my2;
+        mx3;
+        my3;
+
+        mstate=[];
+
+
+        drx = [];
+        dry = [];
+
+        curved = [];
+        chd = [];
+
+        refresh = [];
+        id = [];
+        mrk = [];
+
+
+        type1 = [];
+        bit1 = [];
+        value1 = [];
+        str1 = [];
+        font1 = [];
+        fsize1 = [];
+        x11 = [];
+        y11 = [];
+        x21 = [];
+        y21 = [];
+        col1 = [];
+
+        dx1 = [];
+        dy1 = [];
+        sx1 = [];
+        sy1 = [];
+        k1 = [];
+
+        stx1 = [];
+        sty1 = [];
+
+        sdrx1 = [];
+        sdry1 = [];
+
+
+        an1 = [];
+        sp1 = [];
+        n1 = [];
+
+        zm1 = [];
+        rot1 = [];
+
+        mweel=[];
+
+        mvx ;
+        mvy ;
+
+        curved1 = [];
+        chd1 = [];
+
+        refresh1 = [];
+        id1 = [];
+        mrk1 = [];
+ 
+        value=[]
+
+
+        count = 0;
+
+        key=0;
+        x; y;
+        stx;sty;
+        wi=0;
+        nad=0;
+        w; h;
+
+        pindex=0;
+        waitstart=false;
+
+
+        // refresh;
+
+        fx1 = 12000;
+        fy1 = 12000;
+        fx2 = 1;
+        fy2 = 1;
+        wci = 0;
+        ini = false;
+
+        ex1;
+        ex2;
+        ey1;
+        ey2;
+        esc;
+        epi;
+        id = [];
+
+        bind = 0;
+        bitmaps = []
+         paths = [];
+         
+        
+        fonts = []
+        fpaths = [];
+        pat;
+        marki;
+
+        wci
+        wcx1
+        wcy1
+        wcx2
+        wcy2
+        wzm
+        wdx=0;
+        wdy=0;
+
+        wmvx=0;
+        wmvy=0;
+        key=0;//mouse key
+
+        wover=0;//nad kakim scrollom
+        pressedw=0;
+        pressedo=0;
+        ctx;
+        wweel=0;
+
+        noscroll=false;//otmenit scrolling naprimer pri dviganii elem
+        mousetop=0;//samiy verhniy obj clicked
+        alert1='';
+        stox=0;
+        stoy=0;
+        pinchx=0
+        pinchy=0
+        pinchd=0
+
+        tcanvas=null;
+
+        loading=false;
+
+        szm=1.0;
+
+
+        distance = (event) => {
+            return Math.hypot(event.touches[0].pageX - event.touches[1].pageX, event.touches[0].pageY - event.touches[1].pageY);
+        };
+
+
+        old=undefined;
+        deb=function(ind,us){
+            if(ind!=this.old&&us){
+                this.old=ind
+                debugger
+            }
+        }
+
+    fitw=function(ind){
+		this.zm[ind]=(this.x2[ind]-this.x1[ind])/this.sx[ind];
+		this.refresh[ind]=1;
+	}
+	fith=function(ind){
+        this.zm[ind]=(this.y2[ind]-this.y1[ind])/this.sy[ind];
+		//this.dx[ind]=((this.sy[ind]/2.0)-((this.x2[ind]-this.x1[ind])/2.0));
+        this.refresh[ind]=1;
+	}
+
+
+        clicked=(i)=> {
+            return mousedown(i);
+        }
+
+mousedown=(i)=> {
+
+if(this.key==1){
+   
+if(this.type[i]==8){
+  if (this.x > this.x1[i] && this.y > this.y1[i] && this.x < this.x2[i]&& this.y < this.y2[i]) {  
+    this.mstate[i]=1;
+   // this.dri=i;
+    //console.log("window="+this.type[i])
+   this.mx=((this.x-this.x1[i])/this.zm[i])-this.dx[i];
+   this.my=((this.y-this.y1[i])/this.zm[i])-this.dy[i];
+   
+      
+      return true;
+  }
+} else
+if(this.type[i]==5){
+    
+  if (this.x > this.x1[i] && this.y > this.y1[i] && this.x < this.x2[i]&& this.y < this.y2[i]) {
+    this.mstate[i]=1;
+    //console.log("overl="+this.type[i])
+   // this.dri=i;
+//console.log(this.type[i])
+   this.mx=(this.x-this.x1[i]);
+   this.my=(this.y-this.y1[i]);
+   
+    
+      return true;
+  }
+} else{
+
+//console.log("cli "+this.type[this.wi]);
+    if(this.type[this.wi]==8){
+     this.mx=((this.x-this.x1[this.wi])/this.zm[this.wi])-this.dx[this.wi];
+     this.my=((this.y-this.y1[this.wi])/this.zm[this.wi])-this.dy[this.wi];
+
+    }else {
+        this.mx=this.x//(this.x-this.x1[this.wi]);
+        this.my=this.y//(this.y-this.y1[this.wi]);
+    }
+   //if(this.type[this.wci]==5)console.log("isin="+this.isin(this.wci)+" i="+i+" mx="+this.mx+" my="+this.my+" "+this.x1[i]+" "+this.y1[i]+" "+this.x2[i]+" "+this.y2[i]);
+   if (this.isin(this.wci)&&this.mx > this.x1[i] && this.my > this.y1[i] && this.mx < this.x2[i]&& this.my < this.y2[i]) {
+       this.mstate[i]=1;
+      //this.dri=i;
+//console.log("i="+i+" mx"+this.mx+" my"+this.my+" x1"+this.x1[i]+" y1"+this.y1[i]+" x2"+this.x2[i]+" y2"+this.y2[i])
+//console.log("obj i="+i)
+      this.mx=this.mx-this.x1[i];
+      this.my=this.my-this.y1[i];
+
+     return true;
+   }
+
+}
+
+}
+return false;
+}
+
+
+
+mousemove=(i)=> { 
+
+   
+
+if(this.key==2&&(this.stx!=this.x||this.sty!=this.y)){ 
+
+if(this.type[i]==8){
+
+  if (this.x > this.x1[i] && this.y > this.y1[i] && this.x < this.x2[i]&& this.y < this.y2[i]) {
+    this.mstate[i]=2;
+   
+   this.mx=((this.x-this.x1[i])/this.zm[i])-this.dx[i];
+   this.my=((this.y-this.y1[i])/this.zm[i])-this.dy[i];
+
+   this.mx1=((this.x-this.x1[i])/this.zm[i]);
+   this.my1=((this.y-this.y1[i])/this.zm[i]);
+   this.mvx=(this.x-this.stx)/this.zm[i];
+   this.mvy=(this.y-this.sty)/this.zm[i];
+     
+        //  this.mvx=this.mvx[i];this.mvy=this.mvy[i];
+       
+      return true;
+  }
+} else
+if(this.type[i]==5){
+  if (this.x > this.x1[i] && this.y > this.y1[i] && this.x < this.x2[i]&& this.y < this.y2[i]) {
+   this.mstate[i]=2;
+   this.mx=(this.x-this.x1[i]);
+   this.my=(this.y-this.y1[i]);
+  this.mx1=((this.x-this.x1[i])/this.zm[i]);
+  this.my1=((this.y-this.y1[i])/this.zm[i]);           
+  this.mvx=(this.x-this.stx)/this.zm[i];
+   this.mvy=(this.y-this.sty)/this.zm[i];
+   
+
+      return true;
+  }
+} else{
+
+    
+    for(let j=i;j>0;j--){
+         // if(this.type[j]==5||this.type[j]==5||j==0){this.wi=j;}
+        }
+    if(this.type[this.wi]==8){
+     this.mx=((this.x-this.x1[this.wi])/this.zm[this.wi])-this.dx[this.wi];
+     this.my=((this.y-this.y1[this.wi])/this.zm[this.wi])-this.dy[this.wi];
+     this.mx1=((this.x-this.x1[this.wi])/this.zm[this.wi]);
+     this.my1=((this.y-this.y1[this.wi])/this.zm[this.wi]);  
+
+     
+    }else {
+        this.mx=(this.x-this.x1[this.wi]);
+        this.my=(this.y-this.y1[this.wi]);
+        this.mx1=((this.x-this.x1[this.wi])/this.zm[this.wi]);
+        this.my1=((this.y-this.y1[this.wi])/this.zm[this.wi]);  
+    }
+    
+  //  console.log("mx="+this.mx1+" my="+this.my1)
+ //   console.log("x1="+this.x1[i]+" y1="+this.y1[i]+" x2="+this.x2[i]+" y2="+this.y2[i])
+//  console.log("move "+this.type[this.wi])
+   if (this.x > this.x1[this.wi] && this.y > this.y1[this.wi] && this.x < this.x2[this.wi]&& this.y< this.y2[this.wi]) {
+      this.mstate[i]=2;
+      this.mx1=this.mx1-this.x1[i];
+      this.my1=this.my1-this.y1[i];
+      this.mvx=(this.x-this.stx)/this.zm[this.wi];
+      this.mvy=(this.y-this.sty)/this.zm[this.wi];
+console.log(this.mvx+" "+this.mvy)
+
+     return true;
+   }
+
+}
+return false;
+
+}
+
+
+        }
+
+
+
+
+
+
+mousedrag=(i)=> { 
+    
+    if(this.isin(i)){
+       
+      if(this.type[i]==8){
+          
+
+        if(this.mousemove(i)) { 
+         // console.log("scrol");
+
+          return true;
+        }
+    }else 
+    if(this.type[i]==5){
+        if(this.mousemove(i)) {console.log("overl");
+          return true;
+        }
+    }
+
+
+/*
+    if(this.type[this.wi]==8){
+         this.mx=((this.x-this.x1[this.wi])/this.zm[this.wi])-this.dx[this.wi];
+         this.my=((this.y-this.y1[this.wi])/this.zm[this.wi])-this.dy[this.wi];
+         this.mvx=(this.x-this.stx)/this.zm[this.wi];
+         this.mvy=(this.y-this.sty)/this.zm[this.wi];console.log(this.mvx+" 8 "+this.mvy)
+        
+    }else {
+        this.mx=(this.x-this.x1[this.wi]);
+        this.my=(this.y-this.y1[this.wi]);
+        this.mvx=(this.x-this.stx)/this.zm[this.wi];
+        this.mvy=(this.y-this.sty)/this.zm[this.wi];console.log(this.mvx+" 5 "+this.mvy)
+       
+    }*/
+     
+   if (this.mousemove(i)) {
+   
+      this.mx=this.mx-this.x1[i];
+      this.my=this.my-this.y1[i];
+   //this.mvx=(this.x-this.stx)/this.zm[i];
+   //this.mvy=(this.y-this.sty)/this.zm[i];
+  console.log("dragingon- "+this.mvx+" "+this.mvy)
+     return true;
+   }
+}
+       return false; 
+ }
+
+
+
+ mousedragon=(i)=> {
+    if(this.wi==i){
+      if(this.type[i]==8){
+        if(this.mousemove(i)) {
+          return true;
+        }
+    }else 
+    if(this.type[i]==5){
+        if(this.mousemove(i)) {
+          return true;
+        }
+    }
+    }
+   
+if(this.dri==i){
+   if (this.mousemove(this.wi)&&this.mx > this.x1[i] && this.my > this.y1[i] && this.mx < this.x2[i]&& this.my < this.y2[i]) {
+
+      this.mx=this.mx-this.x1[i];
+      this.my=this.my-this.y1[i];
+   this.mvx=(this.x-this.stx)/this.zm[i];
+   this.mvy=(this.y-this.sty)/this.zm[i];
+   console.log("draging- "+this.mvx+" "+this.mvy)
+     return true;
+   }
+}
+       return false; 
+ }
+
+
+
+draged=(i)=> {
+    return this.mousedrag(i);
+}
+
+
+
+        mouseup=(ind)=> {
+
+           
+           return(this.key==0);
+        
+        }
+
+
+
+        mouseweel=function(){
+            if(this.mweel[this.pindex]==undefined)return false;
+            if(this.mweel[this.pindex]!=0){
+                this.wweel =this.mweel[this.pindex];
+                this.mweel[this.pindex]=0;
+                return true;
+            } else {
+                return false;}
+
+        }
+        mouseweel=function(ind){
+            if(this.mweel[ind]==undefined)return false;
+            if(this.mweel[ind]!=0&&this.mstate[ind]==5){
+                //console.log("zm")
+                this.wweel =this.mweel[ind];
+                this.mweel[ind]=0;
+                return true;
+            } else {
+                return false;}
+
+        }
+        pinchzoom=function(ind){
+            if(this.mweel[ind]==undefined)return false;
+            if(this.mweel[ind]!=0&&this.mstate[ind]==6){
+                
+                //alert(this.mweel[ind])
+                this.wweel =this.mweel[ind]
+//console.log("zm "+this.wweel)
+                this.mweel[ind]=0;
+                this.mstate[ind]=0
+                return true;
+            } else {
+                return false;}
+
+        }
+  
+changed=(ind)=> {
+            if(this.chd[ind]) {
+                this.chd[ind]=false;
+                return true;
+            } else {
+                return false;
+            }
+ }
+ prind=0;//index of pressed
+ timems=0;//ms
+ 
+        pressed=(ind)=> {
+            
+    
+          if(this.key==7){
+              
+           
+              
+               if(this.isin(ind)){
+                   
+//console.log(ind+"  "+this.isin(ind))
+                  
+                   this.clcount=0; this.key=0;
+               return true;} else return false;
+          }
+        }
+       
+
+        
+
+
+
+
+
+
+
+        scroll=function(ind) {
+        
+             if(isNaN(this.mvx)||isNaN(this.mvy)){this.mvx=0;this.mvy=0;return;}
+                e.dx[ind] +=this.mvx;
+                e.dy[ind] +=this.mvy; 
+//console.log("ind="+ind+" "+this.wi );
+
+                
+             //    console.log("move="+this.mvx+" "+this.mvy);
+
+        }
+
+        block=function(wind) {
+        
+           if((-e.dx[wind]+(e.x2[wind]-e.x1[wind]))>e.sx[wind]) e.dx[wind]=-(e.sx[wind]-(e.x2[wind]-e.x1[wind]));
+           if((-e.dy[wind]+(e.y2[wind]-e.y1[wind]))>e.sy[wind]) e.dy[wind]=-(e.sy[wind]-(e.y2[wind]-e.y1[wind]));
+           if(e.dx[wind]>0) e.dx[wind]=0;
+           if(e.dy[wind]>0) e.dy[wind]=0;
+        }
+
+
+        selecttodrag=function(ind) {
+            e.sdx[ind]=e.x1[ind]// / e.zm[e.pindex];
+            e.sdy[ind]=e.y1[ind] /// e.zm[e.pindex];
+        }
+
+        processcrolling=function(wind) {
+
+           // 
+          if(this.noscroll==false){ //console.log(wind+" "+this.wi)
+            if(this.mousedrag(wind)){ 
+               
+              
+
+                this.scroll(wind);
+            }
+            
+          }
+          
+        }
+        processzooming=function(wind) {
+            if(this.mouseweel(wind)){
+            if(this.wweel<0){
+                this.zm[wind]*=1.05
+              //  console.log(e.zm[e.pindex])
+            }else if(this.wweel>0){
+                this.zm[wind]*=0.95
+               // console.log(e.zm[e.pindex])
+            }
+            
+            }
+
+            if(this.pinchzoom(wind)){
+                
+                this.zm[wind]=this.wweel;
+//console.log("pz "+this.pinchd+" "+this.wweel)
+                
+                
+            }
+
+
+
+        }
+
+NOZOOM=99;
+stime=0;
+scrollbox=false;
+
+clcount=0;
+cli=[];
+clm=[];
+clx=[];
+cly=[]; 
+
+addcl=function(ind,x,y){
+    //console.log(this.type[ind]+" "+x+" "+y+" ")
+   if(ind==11)console.log("obj "+this.type[ind]+" "+this.paths[this.bit[ind]]+" "+this.str[ind])
+ this.clcount++;
+this.cli[this.clcount]=ind;
+this.clx[this.clcount]=this.paths[this.bit[ind]];
+
+
+}
+
+
+//если использовать mousedown взаместо pressed //первые условия pressed срабатывают
+
+
+isin=function(ind){
+ let yes=false;
+ 
+ 
+ 
+for(let i=1;i<=this.clcount;i++){
+     if((this.cli[i]==ind)&&(this.clx[i]==this.paths[this.bit[ind]])){ yes=true;break; }
+}
+ return yes;
+}
+
+
+/*
+isin=function(ind){
+ let yes=false;
+
+ for(let i=1;i<=this.clcount;i++){
+
+     
+   if(this.cli[i]==ind){
+
+       yes=true;break;}
+    
+ }
+ 
+ 
+ 
+ return yes;
+}
+*/
+
+
+
+mousedownevent=function(x,y){
+  
+   this.key=1;
+   this.timems=performance.now();
+   this.x=x;
+   this.y=y;
+   this.stx=x;
+   this.sty=y;
+   
+ for(let i=1;i<=this.count;i++){
+    
+   if(this.type[i]==8){
+     if(x>this.x1[i]&&x<this.x2[i]&&y>this.y1[i]&&y<this.y2[i]){
+          this.addcl(i,x,y);
+          this.wi=i;
+     }
+   }else
+   if(this.type[i]==5){
+       //console.log("x="+x+" y="+y+" "+this.x1[i]+" "+this.y1[i]+" "+this.x2[i]+" "+this.y2[i])
+     if(x>this.x1[i]&&x<this.x2[i]&&y>this.y1[i]&&y<this.y2[i]){
+        this.addcl(i,x,y);
+        this.wi=i;
+     }
+   }
+ }//for
+    let ii=this.wi+1;//console.log("click")
+   if(this.type[ii]==8||this.type[ii]==5)return;
+   let inx=0;
+   let iny=0;
+   if(this.type[this.wi]==8){
+     inx=((this.x-this.x1[this.wi])/this.zm[this.wi])-this.dx[this.wi];
+     iny=((this.y-this.y1[this.wi])/this.zm[this.wi])-this.dy[this.wi];
+    
+    }else {
+        inx=this.x//(this.x-this.x1[this.wi]);
+        iny=this.y//(this.y-this.y1[this.wi]);
+   } 
+   
+  // console.log("inx= "+inx+" iny= "+iny)
+   do{
+    if(this.type[ii]==8||this.type[ii]==5)break;
+    if(inx>this.x1[ii]&&inx<this.x2[ii]&&iny>this.y1[ii]&&iny<this.y2[ii]){
+        //console.log("add  "+this.type[ii])
+        this.addcl(ii,this.x,this.y);
+    }
+    ii++;
+   }while(this.type[ii]!=8&&this.type[ii]!=5&&ii<=this.count);
+
+
+
+
+
+   
+
+
+
+
+
+   
+}
+
+
+
+
+
+mouseupevent=function(x,y){
+    //console.log("UP")
+    
+    let delay=performance.now()-this.timems;
+
+if(delay>200){
+    
+    
+  this.key=0;this.clcount=0;
+    
+    
+    
+}else {this.key=7;
+    
+    
+    
+}
+  
+
+
+   this.x=0;
+   this.y=0; 
+   this.stx=0;
+   this.sty=0; 
+   this.noscroll=false;
+   this.wi=0;
+   this.dri=0;
+   this.mvx=0;
+   this.mvy=0;
+
+}
+
+
+mousemoveevent=function(e,x,y){
+
+if(e.buttons==0&&performance.now()-this.timems<60)return false;
+
+   this.key=2;
+  
+   this.x=x;
+   this.y=y;
+ 
+   for(let i=this.count;i>0;i--){
+   if(this.type[i]==8){
+     if(x>this.x1[i]&&x<this.x2[i]&&y>this.y1[i]&&y<this.y2[i]){
+          this.nad=i;break;
+          
+     }
+   }else
+   if(this.type[i]==5){
+     if(x>this.x1[i]&&x<this.x2[i]&&y>this.y1[i]&&y<this.y2[i]){
+          this.nad=i;break;
+          
+     }
+   }
+
+ }
+
+}
+
+
+drawscrollbar=function (ci,c) {
+    
+    let wdx=this.dx[ci];
+    let wdy=this.dy[ci];
+    let wzm=this.zm[ci];
+                    c.scale(wzm,wzm)
+                    c.translate(wdx,wdy);
+let i=ci;
+do{
+ i++;
+
+ if (this.type[i] == 3) { //BITMAP
+                    //if(cy1>0-hh&&cy2<h+hh&&cx1>0-(ww)&&cx2<w+ww){
+                    if (this.bit[i]!=-1) {
+                        if (this.bitmaps[this.bit[i]] != null&&this.bitmaps[this.bit[i]].width>0) {
+                            var bw = this.bitmaps[this.bit[i]].width;
+                            var bh = this.bitmaps[this.bit[i]].height;
+                         c.drawImage(this.bitmaps[this.bit[i]], 0, 0, bw, bh, this.x1[i], this.y1[i], this.x2[i]-this.x1[i], this.y2[i]-this.y1[i]);
+                            //c.drawImage(this.bitmaps[this.bit[i]],this.x1[i], this.y1[i]);
+
+                        }}
+
+                }
+
+
+                if (this.type[i] == 12) {//FRAME
+                    c.strokeStyle=this.col[i];
+                 
+                   c.beginPath()
+                    c.rect(this.x1[i], this.y1[i],this.x2[i]-this.x1[i],this.y2[i]-this.y1[i]);
+                     c.stroke();
+                }
+if (this.type[i] == 13) {//line width
+
+//c.fillStyle=this.col[i];
+c.lineWidth=this.x2[i];
+
+ 
+}
+
+                if (this.type[i] == 4) {//TEXT
+
+                    if (this.str[i]!=undefined) {
+                        // c.drawImage(this.bitmaps[this.bit[i]], 0, 0, bw, bh, this.x1[i], this.y1[i], this.x2[i], this.y2[i]);
+                        c.font=this.fsize[i]+"px '"+this.font[i]+"'";
+                     
+                        c.fillStyle="rgb(255,0,0)";
+                        //c.fillText(this.str[i],this.x1[i], this.y1[i],this.x2[i]-this.x1[i]);
+                       
+
+                        //this.textrect(c,this.str[i],this.fsize[i],this.x1[i], this.y1[i],this.x2[i],this.y2[i]);
+                        c.beginPath()
+                        c.rect(this.x1[i], this.y1[i],this.x2[i],this.y2[i]);
+                        c.stroke();}
+                    /*c.font="48px font0";
+                    c.fillStyle="rgb(255,0,0)";
+                  c.fillText("Demo",10,10)*/
+                }
+
+                if (this.type[i] == 6) { //ANIM BITMAP
+                    //if(cy1>0-hh&&cy2<h+hh&&cx1>0-(ww)&&cx2<w+ww){
+                    if (this.bit[i]!=-1) {
+                        if (this.bitmaps[this.bit[i]] != undefined&&this.bitmaps[this.bit[i]].width>0) {
+
+
+                            var bw = this.bitmaps[this.bit[i]].width;
+                            var bh = this.bitmaps[this.bit[i]].height;
+
+
+
+                            //  c.drawImage(this.bitmaps[this.bit[i]], 0, 0, bw, bh, this.x1[i], this.y1[i], this.x2[i]-this.x1[i], this.y2[i]-this.y1[i]);
+
+
+
+                            // c.drawImage(this.bitmaps[this.bit[i]], 0, 0, bw, bh, this.x1[i], this.y1[i], this.x2[i], this.y2[i]);
+                            //c.drawImage(this.bitmaps[this.bit[i]],this.x1[i], this.y1[i]);
+                            //c.drawImage(this.bitmaps[this.bit[i]],this.x1[i], this.y1[i]);
+                            var vy=Math.trunc((this.k[i]*this.sx[i])/bw);
+                            var srx1=(this.k[i]-(this.dx[i]*vy))*this.sx[i];
+                            var sry1=vy*this.sy[i];
+                            var srx2=(this.k[i]-(this.dx[i]*vy)+1)*this.sx[i];
+                            var sry2=(vy+1)*this.sy[i];
+                            //  this.alert1="sx="+this.sx[i]+"sy="+this.sy[i]+"srx1="+srx1+"sry1="+sry1+"srx2="+srx2+"sry2="+sry2
+
+                            //c.drawImage(this.bitmaps[this.bit[i]],srx1,sry1,srx2-srx1,sry2-sry1,this.x1[i], this.y1[i],this.x2[i]-this.x1[i], this.y2[i]-this.y1[i]);
+                            // c.fillRect(this.x1[i], this.y1[i], this.x2[i]-this.x1[i], this.y2[i]-this.y1[i])
+                         var prc=1.0
+                            if(this.an[i]>0){
+                            prc=(an[i]/(performance.now()-this.an1[i]));
+                             if(prc<0.001)this.an[i]=0;
+                            }
+                            c.drawImage(this.bitmaps[this.bit[i]],srx1,sry1,srx2-srx1,sry2-sry1,this.x1[i], this.y1[i],(this.x2[i]-this.x1[i])*prc, this.y2[i]-this.y1[i]);
+
+
+
+                        }}
+
+                }
+
+
+}while(i<512&&this.type[i]!=8&&this.type[i]!=5)
+
+
+
+
+}
+
+
+
+
+cropcanvastobase64=function (ci) {
+    let t
